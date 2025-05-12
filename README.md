@@ -44,13 +44,7 @@ This repository contains two powerful SEO tools built with **Streamlit** and pow
 
 To run this project locally, follow the steps below:
 
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/your-username/ai-seo-toolkit.git
-cd ai-seo-toolkit
-```
-### 2. Create and Activate a Virtual Environment
+### 1. Create and Activate a Virtual Environment
 ```bash
 python -m venv venv             # on windows
 source venv/bin/activate        # On macOS/Linux
@@ -58,11 +52,11 @@ source venv/bin/activate        # On macOS/Linux
 venv\Scripts\activate       
 ```
 
-### 3. Install Required Dependencies    
+### 2. Install Required Dependencies    
 ```bash
 pip install -r requirements.txt     
 ```
-### 4. Create a .env File 
+### 3. Create a .env File 
 ```bash
 GEMINI_API_KEY=your_gemini_api_key_here    
 ```
