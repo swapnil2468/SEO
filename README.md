@@ -27,17 +27,18 @@ This repository contains two powerful SEO tools built with **Streamlit** and pow
 
 ```bash
 .Project 1
-├── helpers.py           
-├── seo_audit.py         
-├── main1.py               
-├── links_test.txt     
+├── helpers.py           # AI Analysis file
+├── seo_audit.py         # SEO Analysis file
+├── main1.py             # Main file for Project 1 
+├── .env                 # env file for Google API
 
  .Project 2
-├── main.py         
+├── main.py              # Main file for Project 2
+├── .env                 # env file for Google APId
 
 .Main_file
-├── app.py         
-├── Requirements.txt   
+├── app.py               # Run both the project in one interface
+├── Requirements.txt     # Dependencies Required
 ```
 ## 🛠️ Setup Instructions
 
@@ -49,7 +50,7 @@ To run this project locally, follow the steps below:
 git clone https://github.com/your-username/ai-seo-toolkit.git
 cd ai-seo-toolkit
 ```
-### 2. (Optional) Create and Activate a Virtual Environment
+### 2. Create and Activate a Virtual Environment
 ```bash
 python -m venv venv             # on windows
 source venv/bin/activate        # On macOS/Linux
@@ -68,7 +69,7 @@ GEMINI_API_KEY=your_gemini_api_key_here
 
 ## 🛠️ How to Run the Apps
 
-To run this project make sure the virtual environment is set to the one u made and then run this code
+To run this project make sure the virtual environment is set to the one you made and then run this code
 ```bash
 streamlit run app.py
 ```
