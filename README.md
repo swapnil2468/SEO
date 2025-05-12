@@ -21,6 +21,10 @@ This repository contains two powerful SEO tools built with **Streamlit** and pow
 - AI-generated detailed explanations, suggestions, and prioritizations.
 - Displays both raw audit data and Gemini-powered analysis.
 
+### 3. SEO Blog Generator
+- Genrates a well optimized blog on the given topic.
+- An upload option is provided for keywords.
+- The Blog is provided with a `.txt` or `.md` file download button
 ---
 
 ## 📁 Project Structure
@@ -34,6 +38,10 @@ This repository contains two powerful SEO tools built with **Streamlit** and pow
 
  .Project 2
 ├── main.py              # Main file for Project 2
+├── .env                 # env file for Google APId
+
+ .Project 3
+├── main3.py              # Main file for Project 3
 ├── .env                 # env file for Google APId
 
 .Main_file
