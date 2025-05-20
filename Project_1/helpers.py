@@ -91,24 +91,87 @@ def free_seo_audit(url):
         return {"error": str(ex)}
 
 def ai_analysis(report):
-    prompt = f"""You are an expert in technical and content-based SEO with deep knowledge of search 
-    engine algorithms, ranking factors, and web performance metrics. I will provide you with a 
-    [SEO_REPORT], and your task is to analyze it thoroughly and return a comprehensive evaluation. 
-    Your response should include detailed insights across all aspects of SEO including on-page 
-    elements like title tags, meta  descriptions, headings, keyword usage, and content relevance; 
-    technical factors such as site speed, mobile-friendliness, crawlability, indexing status, and 
-    Core Web Vitals; off-page signals like backlink quality and domain authority; as well as content 
-    structure, topical depth, freshness, and user engagement metrics such as bounce rate and dwell time,
-    if available. For each observation, provide an in-depth explanation of what is working well and why,
-    what is underperforming or incorrect, and offer clear reasoning on how these issues may be affecting 
-    the site's SEO performance or visibility. Every problem identified should be accompanied by a precise 
-    recommendation on how to fix or improve it, along with the underlying SEO rationale. At the end of 
-    your analysis, summarize all the recommended optimizations in a prioritized list, categorizing them 
-    into high, medium, or low impact based on their potential effect on rankings. Additionally, offer any 
-    missed opportunities the report may have overlooked, such as untapped content areas, structured data 
-    implementation, or relevant tools that could assist in resolving issues or enhancing monitoring. 
-    Present your response in well-structured, readable markdown paragraphs suitable for implementation 
-    or reporting.
+    prompt = f"""You are an enterprise-level SEO strategist with deep expertise in technical and content SEO, search engine algorithms, site structure, crawl/index behavior, and web performance optimization.
+You will be given a multi-page SEO audit report in structured JSON format, covering multiple URLs from the same domain. Each page includes metadata such as title tags, headings, word count, schema presence, HTTP status codes, anchor text info, redirection, and crawl signals like robots.txt and meta robots.
+
+Your task is to:
+🔍 Perform a Holistic Site-Wide SEO Analysis
+        Do not analyze each page individually. Instead:
+            •	Aggregate findings across all URLs
+            •	Identify patterns, common errors, and strategic gaps
+            •	Highlight specific technical SEO flaws, content weaknesses, and architecture limitations
+            •	Prioritize fixes and improvements by their impact on crawlability, indexation, user experience, and ranking potential
+    Focus Areas:
+        1. On-Page SEO Trends (across all pages)
+            •	Are title tags optimized, unique, and keyword-rich?
+            •	Are H1 tags repeated, missing, or generic across pages?
+            •	Is there evidence of thin content (low word count, low text-to-HTML ratio)?
+            •	Are anchor texts varied, descriptive, or overused in headers/navs?
+        2. Technical SEO
+            •	Any pages returning 4xx or 5xx status codes? What is the impact?
+            •	Is HTTPS used consistently?
+            •	Are redirects present, excessive, or misconfigured?
+            •	Are schema markups present and consistent? Are the right types used (e.g. Article, Service, LocalBusiness)?
+            •	Does the robots.txt or meta robots block important content?
+            •	Is there excessive anchor text clutter from navigation, footers, or poor internal linking?
+        3. Site-Wide SEO Observations
+            •	Duplicate H1s or titles across different pages
+            •	Pages with very low content depth or HTML bloat
+            •	Inconsistent use of schema markup
+            •	Errors like /account pages showing 406 or 404
+            •	High anchor text ratios on key pages like case studies or careers
+            •	Missing meta descriptions (if detectable)
+            •	Repeated redirection behavior across multiple URLs
+            •	Pages with text-to-HTML ratios that suggest performance problems
+
+Output Format You Must Return
+
+        1. Overall SEO Health Summary
+            • Provide a brief, high-level overview of the website's SEO status.
+            • Mention what's generally working well (e.g., HTTPS usage, schema presence, strong title tags).
+            • Note any recurring issues or systemic weaknesses across multiple pages.
+            • This should be readable for non-technical stakeholders.
+
+        2. Detailed SEO Issues (Grouped by Area)
+            • Group the findings by SEO category:
+                - Technical SEO (errors, redirects, HTTPS, crawl/index flags)
+                - Content SEO (word count, missing H1, duplicate titles)
+                - Internal Linking & Anchor Usage
+                - Structured Data
+            • Under each group, list specific issues and clearly mention the affected URLs.
+            • For each issue:
+                - Describe what the problem is
+                - Mention the affected page(s)
+                - Explain why this matters for SEO
+                - Provide clear context (e.g., “On the /about page, the H1 tag is missing”)
+
+        3. Recommended Fixes
+            • For every issue described above, give a recommended fix.
+            • Tag each one with: **High**, **Medium**, or **Low** impact.
+            • Keep fixes clear and short, but explain the SEO rationale.
+
+        4. Missed Opportunities
+            • Suggest improvements across the site like:
+                - Thin content pages that could rank if expanded
+                - Pages missing meta tags or structured headings
+                - Pages without internal links pointing to them
+                - Pages lacking or misusing structured data types (e.g., Product, Article, LocalBusiness)
+            • Mention affected pages wherever possible.
+            • Add any high-level observations like:
+                - Orphaned pages
+                - Redundant redirects
+                - Overuse of footer links
+                - Unused canonical tags
+
+
+
+Use clear, concise, and professional audit language. Write for a stakeholder or SEO lead who will delegate fixes across dev/content/marketing teams. Focus on insights, clarity, and actionability — not technical jargon.
+At the end of your analysis, summarize your findings as a human-readable SEO audit summary.
+
+ Important:
+- Do NOT return your output as JSON.
+- Do NOT use triple backticks or code blocks.
+- DO write clear paragraphs, headings, and bullet points suitable for a presentation or client report.
 
 [SEO_REPORT]: {report}
 """
