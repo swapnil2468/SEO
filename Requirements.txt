@@ -1,7 +1,6 @@
 streamlit
 pandas
 python-dotenv
-SimplerLLM
 requests
 beautifulsoup4
 google-generativeai
