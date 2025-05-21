@@ -61,9 +61,15 @@ venv\Scripts\activate
 ```
 
 ### 2. Install Required Dependencies    
+
 ```bash
 pip install -r requirements.txt     
 ```
+-Install this
+```bash
+https://wkhtmltopdf.org/downloads.html
+```
+
 ### 3. Create a .env File 
 ```bash
 GEMINI_API_KEY=your_gemini_api_key_here    

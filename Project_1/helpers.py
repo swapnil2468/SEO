@@ -1,5 +1,5 @@
 from typing import List
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 from SimplerLLM.language.llm import LLM, LLMProvider
 from bs4 import BeautifulSoup
 import requests
@@ -8,11 +8,13 @@ import json
 import streamlit as st
 import os
 from dotenv import load_dotenv
+from urllib.parse import urlparse, urljoin
+import re
 load_dotenv()
 llm_instance = LLM.create(
     provider=LLMProvider.GEMINI,
-    model_name="models/gemini-2.0-flash",  # This is the correct model name for Gemini
-    api_key=os.getenv("GEMINI_API_KEY")  # This assumes your .env has GEMINI_API_KEY
+    model_name="models/gemini-2.0-flash",  
+    api_key=os.getenv("GEMINI_API_KEY")
 )
 
 def display_wrapped_json(data, width=80):
@@ -35,60 +37,111 @@ def display_wrapped_json(data, width=80):
     wrapped_data = process_item(data)
     st.code(json.dumps(wrapped_data, indent=2), language='json')
 
-def free_seo_audit(url):
-    try:
-        response = requests.get(url)
-        soup = BeautifulSoup(response.content, "html.parser")
+def full_seo_audit(url):
+    result = {}
+    visited_urls = set()
+    internal_errors = []
 
-        # Basic HTTP info
-        audit_result = {
-            "http": {
-                "status": response.status_code,
-                "using_https": url.startswith("https://"),
-                "response_time": f"{response.elapsed.total_seconds():.2f} seconds",
-            }
-        }
+    try:
+        response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, allow_redirects=True, timeout=10)
+        soup = BeautifulSoup(response.content, "html.parser")
+        parsed_url = urlparse(url)
 
         # Metadata
         title_tag = soup.find("title")
-        description_tag = soup.find("meta", {"name": "description"})
-        audit_result["metadata"] = {
-            "title": title_tag.string if title_tag else None,
-            "title_length": len(title_tag.string) if title_tag else 0,
-            "description": description_tag["content"] if description_tag else None,
-            "description_length": len(description_tag["content"]) if description_tag else 0,
+        desc_tag = soup.find("meta", {"name": "description"})
+        result["title"] = {
+            "text": title_tag.text.strip() if title_tag else "Missing",
+            "length": len(title_tag.text.strip()) if title_tag else 0,
+            "word_count": len(title_tag.text.strip().split()) if title_tag else 0,
+        }
+        result["description"] = {
+            "text": desc_tag["content"].strip() if desc_tag and desc_tag.get("content") else "Missing",
+            "length": len(desc_tag["content"].strip()) if desc_tag and desc_tag.get("content") else 0,
+            "word_count": len(desc_tag["content"].strip().split()) if desc_tag and desc_tag.get("content") else 0,
         }
 
-        # Basic content analysis
-        text_content = " ".join(soup.stripped_strings)
-        headings = soup.find_all(["h1", "h2", "h3"])
-        audit_result["content"] = {
-            "word_count": len(text_content.split()),
-            "h1_count": len([h for h in headings if h.name == "h1"]),
-            "h2_count": len([h for h in headings if h.name == "h2"]),
-            "h3_count": len([h for h in headings if h.name == "h3"]),
+        # Headings H1–H6
+        result["headings"] = {f"H{i}": len(soup.find_all(f"h{i}")) for i in range(1, 7)}
+        result["H1_content"] = soup.find("h1").text.strip() if soup.find("h1") else ""
+
+        # Word & anchor text stats
+        text = " ".join(soup.stripped_strings)
+        total_words = len(re.findall(r'\b\w+\b', text))
+        anchor_tags = soup.find_all("a", href=True)
+        anchor_texts = [a.get_text(strip=True) for a in anchor_tags if a.get_text(strip=True)]
+        anchor_words = sum(len(a.split()) for a in anchor_texts)
+
+        result["word_stats"] = {
+            "total_words": total_words,
+            "anchor_words": anchor_words,
+            "anchor_ratio_percent": round((anchor_words / total_words) * 100, 2) if total_words else 0,
+            "sample_anchors": anchor_texts[:10]
         }
 
-        # Basic link analysis
-        links = soup.find_all("a")
-        internal_links = [link.get("href") for link in links if urlparse(link.get("href", "")).netloc == ""]
-        external_links = [link.get("href") for link in links if urlparse(link.get("href", "")).netloc != ""]
-        audit_result["links"] = {
-            "total_links": len(links),
-            "internal_links": len(internal_links),
-            "external_links": len(external_links),
+        # HTTPS and redirection
+        result["https_info"] = {
+            "using_https": url.startswith("https://"),
+            "was_redirected": len(response.history) > 0
         }
 
-        # Basic image analysis
+        # Text-to-HTML ratio
+        html_size = len(response.text)
+        result["text_to_html_ratio_percent"] = round((len(text) / html_size) * 100, 2) if html_size else 0
+
+        # Schema detection
+        result["schema"] = {
+            "json_ld_found": bool(soup.find_all("script", {"type": "application/ld+json"})),
+            "microdata_found": bool(soup.find_all(attrs={"itemscope": True}))
+        }
+
+        # Image alt analysis
         images = soup.find_all("img")
-        audit_result["images"] = {
+        result["images"] = {
             "total_images": len(images),
             "images_without_alt": sum(1 for img in images if not img.get("alt")),
+            "sample_images": [{"src": img.get("src"), "alt": img.get("alt")} for img in images[:5]]
         }
 
-        return audit_result
-    except Exception as ex:
-        return {"error": str(ex)}
+        # robots.txt
+        robots_url = f"{parsed_url.scheme}://{parsed_url.netloc}/robots.txt"
+        try:
+            robots_response = requests.get(robots_url, timeout=5)
+            disallows = [line.strip() for line in robots_response.text.splitlines() if line.lower().startswith("disallow")]
+            result["robots_txt"] = {
+                "found": True,
+                "disallows": disallows
+            }
+        except:
+            result["robots_txt"] = {
+                "found": False,
+                "disallows": []
+            }
+
+        # meta robots tag
+        meta_robots = soup.find("meta", {"name": "robots"})
+        result["meta_robots"] = meta_robots["content"] if meta_robots and meta_robots.get("content") else ""
+
+        # Internal link 4xx/5xx error detection 
+        base_domain = parsed_url.netloc
+        for a in anchor_tags:
+            href = a["href"]
+            full_url = urljoin(url, href)
+            if urlparse(full_url).netloc == base_domain and full_url not in visited_urls:
+                visited_urls.add(full_url)
+                try:
+                    head_resp = requests.head(full_url, allow_redirects=True, timeout=5)
+                    if head_resp.status_code >= 400:
+                        internal_errors.append({"url": full_url, "status": head_resp.status_code})
+                except Exception as e:
+                    internal_errors.append({"url": full_url, "error": str(e)})
+
+        result["internal_link_errors"] = internal_errors
+
+    except Exception as e:
+        result["error"] = str(e)
+
+    return result
 
 def ai_analysis(report):
     prompt = f"""You are an advanced SEO and web performance analyst. I am providing a JSON-formatted audit report of a website. This JSON includes data for individual URLs covering:
@@ -101,6 +154,8 @@ def ai_analysis(report):
         •	Schema markup presence
         •	Indexing and crawling restrictions (robots.txt, meta robots)
 
+    IMPORTANT  :- DO NOT SKIP ANY DATA FROM THE JSON REPORT PARSE THE FULL REPORT DO NOT LEAVE ANYTHING 
+    
     Based on this JSON data:
         1. Overall Health Summary
         Provide a concise summary of the site’s overall technical SEO health and performance.

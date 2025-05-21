@@ -23,11 +23,13 @@ def generate_keywords(seed_keyword):
 
     prompt = f"""
 Please ignore all previous instructions. You are a proficient SEO and keyword research expert.
-Generate a markdown table of 100 keywords based on the seed keyword "{seed_keyword}".
-Include a mix of longtail, LSI, and FAQ keywords.
-Columns: Keyword, Search Volume, CPC (USD), Paid Difficulty, SEO Difficulty,Keyword Intent.
-Output must be clean and in markdown table format only and also sort the output according to your thinking
-that which keyword is the best.
+
+Generate a markdown table of 100 **non-branded** keywords based on the seed keyword "{seed_keyword}".
+⚠️ Do not include any branded, trademarked, or company-specific keywords. Only use generic, longtail, LSI, and FAQ keywords that have commercial or informational intent.
+
+Columns: Keyword, Search Volume, CPC (USD), Paid Difficulty, SEO Difficulty, Keyword Intent.
+
+Output must be clean and in markdown table format only. Also, sort the output based on the best opportunities for ranking and conversion.
 """
 
     try:
