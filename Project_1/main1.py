@@ -5,7 +5,6 @@ from bs4 import BeautifulSoup
 import requests
 import time
 import re
-import pdfkit
 from datetime import datetime
 from xhtml2pdf import pisa
 import io
@@ -53,7 +52,7 @@ def build_html_summary(summary_text: str, site_url: str) -> str:
             if not in_list:
                 html += "<ul>"
                 in_list = True
-            match = re.match(r"\<b\>(.+?)\</b\>:(.*)", line[2:].strip())  # already converted bold
+            match = re.match(r"\<b\>(.+?)\</b\>:(.*)", line[2:].strip())
             if match:
                 title = match.group(1).strip()
                 rest = match.group(2).strip()
@@ -74,7 +73,7 @@ def build_html_summary(summary_text: str, site_url: str) -> str:
 def markdown_to_html(text):
     return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
 
-# --- Convert HTML to PDF using pdfkit ---
+# --- Convert HTML to PDF ---
 def convert_to_pdf(html: str) -> bytes:
     result = io.BytesIO()
     pisa.CreatePDF(io.StringIO(html), dest=result)
@@ -86,7 +85,7 @@ def crawl_entire_site(start_url):
     queue = [start_url]
     all_reports = []
 
-    total_to_crawl = 1  # Starts with homepage
+    total_to_crawl = 1
     progress_bar = st.progress(0)
     status_text = st.empty()
 
@@ -116,17 +115,11 @@ def crawl_entire_site(start_url):
                 if urlparse(full_url).netloc == base and full_url not in visited and full_url not in queue:
                     new_links.append(full_url)
 
-            unique_new_links = [
-                    link for link in new_links
-                    if link not in visited and link not in queue
-                ]
-
+            unique_new_links = [link for link in new_links if link not in visited and link not in queue]
             queue.extend(unique_new_links)
             total_to_crawl += len(unique_new_links)
 
-
             progress_bar.progress((current_index + 1) / total_to_crawl)
-
             time.sleep(0.5)
 
         except Exception as e:
@@ -135,6 +128,7 @@ def crawl_entire_site(start_url):
     status_text.text("✅ Crawl completed!")
     progress_bar.progress(1.0)
     return all_reports
+
 # --- Streamlit UI ---
 def main():
     st.title("🕷️ Full-Site AI SEO Auditor")
@@ -145,7 +139,7 @@ def main():
     if st.button("Start Full Site Audit"):
         if not start_url:
             st.warning("Please enter a valid URL.")
-            return  
+            return
 
         if not start_url.startswith("http://") and not start_url.startswith("https://"):
             start_url = "https://" + start_url.strip()
@@ -153,6 +147,8 @@ def main():
         with st.spinner("Crawling and analyzing site..."):
             full_report = crawl_entire_site(start_url)
             st.session_state["seo_data"] = full_report
+            st.session_state["ai_summary"] = None  # Clear previous summary
+            st.session_state["ai_summary_time"] = None
 
         st.success("✅ Crawl complete!")
 
@@ -163,15 +159,25 @@ def main():
             display_wrapped_json(st.session_state["seo_data"])
 
         elif view == "🤖 AI SEO Summary":
-            if "ai_summary" not in st.session_state:
+            if st.button("♻️ Regenerate AI Summary"):
+                with st.spinner("Regenerating..."):
+                    st.session_state["ai_summary"] = ai_analysis(st.session_state["seo_data"])
+                    st.session_state["ai_summary_time"] = datetime.now().strftime("%d %b %Y, %I:%M %p")
+
+            elif "ai_summary" not in st.session_state or st.session_state["ai_summary"] is None:
                 with st.spinner("Generating summary..."):
                     st.session_state["ai_summary"] = ai_analysis(st.session_state["seo_data"])
+                    st.session_state["ai_summary_time"] = datetime.now().strftime("%d %b %Y, %I:%M %p")
 
             raw_summary = st.session_state["ai_summary"]
+            generated_time = st.session_state.get("ai_summary_time", "")
+
             html_friendly = markdown_to_html(raw_summary)
             html = build_html_summary(html_friendly, start_url)
 
             st.markdown("### 🧠 AI SEO Summary Preview")
+            if generated_time:
+                st.caption(f"Last generated: {generated_time}")
             st.markdown(raw_summary)
 
             pdf_bytes = convert_to_pdf(html)
@@ -182,7 +188,6 @@ def main():
                 file_name="seo_summary.pdf",
                 mime="application/pdf"
             )
-
 
 if __name__ == "__main__":
     main()
