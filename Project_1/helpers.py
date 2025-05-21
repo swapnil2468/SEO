@@ -155,7 +155,7 @@ def ai_analysis(report):
         •	Indexing and crawling restrictions (robots.txt, meta robots)
 
     IMPORTANT  :- DO NOT SKIP ANY DATA FROM THE JSON REPORT PARSE THE FULL REPORT DO NOT LEAVE ANYTHING 
-    
+    do not make any table and dont add impact
     Based on this JSON data:
         1. Overall Health Summary
         Provide a concise summary of the site’s overall technical SEO health and performance.

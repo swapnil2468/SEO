@@ -23,14 +23,24 @@ def build_html_summary(summary_html: str, site_url: str) -> str:
             h2 {{ font-size: 16pt; margin-top: 20px; }}
             ul {{ padding-left: 20px; }}
             li {{ margin-bottom: 10px; }}
+            table {{
+                border-collapse: collapse;
+                width: 100%;
+                table-layout: fixed;
+            }}
+
             table, th, td {{
                 border: 1px solid #888;
-                border-collapse: collapse;
                 padding: 8px;
+                word-wrap: break-word;
+                white-space: normal;
+                vertical-align: top;
             }}
+
             th {{
                 background-color: #f2f2f2;
             }}
+
         </style>
     </head>
     <body>
