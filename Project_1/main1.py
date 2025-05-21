@@ -7,6 +7,8 @@ import time
 import re
 import pdfkit
 from datetime import datetime
+from xhtml2pdf import pisa
+import io
 
 # --- PDF HTML Builder ---
 def build_html_summary(summary_text: str, site_url: str) -> str:
@@ -74,8 +76,9 @@ def markdown_to_html(text):
 
 # --- Convert HTML to PDF using pdfkit ---
 def convert_to_pdf(html: str) -> bytes:
-    config = pdfkit.configuration(wkhtmltopdf="C:\\Program Files\\wkhtmltopdf\\bin\\wkhtmltopdf.exe")  # adjust if needed
-    return pdfkit.from_string(html, False, configuration=config)
+    result = io.BytesIO()
+    pisa.CreatePDF(io.StringIO(html), dest=result)
+    return result.getvalue()
 
 # --- Crawler Logic ---
 def crawl_entire_site(start_url):
