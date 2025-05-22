@@ -1,6 +1,6 @@
 import streamlit as st
 from helpers import ai_analysis, display_wrapped_json, full_seo_audit
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse, urljoin, urlunparse
 from bs4 import BeautifulSoup
 import requests
 import time
@@ -9,7 +9,21 @@ from datetime import datetime
 from xhtml2pdf import pisa
 import io
 import markdown2
-# --- PDF HTML Builder ---
+
+# --- Normalize and Clean URLs ---
+def normalize_url(url):
+    parsed = urlparse(url)
+    clean_path = parsed.path.rstrip('/')
+    return urlunparse((parsed.scheme, parsed.netloc, clean_path, '', '', ''))
+
+def is_valid_link(href):
+    return (
+        href and
+        not href.startswith('#') and
+        not href.lower().startswith('javascript')
+    )
+
+# --- Convert Markdown to Styled HTML PDF ---
 def build_html_summary(summary_html: str, site_url: str) -> str:
     date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     html = f"""
@@ -28,7 +42,6 @@ def build_html_summary(summary_html: str, site_url: str) -> str:
                 width: 100%;
                 table-layout: fixed;
             }}
-
             table, th, td {{
                 border: 1px solid #888;
                 padding: 8px;
@@ -36,11 +49,9 @@ def build_html_summary(summary_html: str, site_url: str) -> str:
                 white-space: normal;
                 vertical-align: top;
             }}
-
             th {{
                 background-color: #f2f2f2;
             }}
-
         </style>
     </head>
     <body>
@@ -53,17 +64,15 @@ def build_html_summary(summary_html: str, site_url: str) -> str:
     """
     return html
 
-# --- Markdown to HTML Converter ---
 def markdown_to_html(text):
     return markdown2.markdown(text, extras=["tables", "fenced-code-blocks"])
 
-# --- Convert HTML to PDF ---
 def convert_to_pdf(html: str) -> bytes:
     result = io.BytesIO()
     pisa.CreatePDF(io.StringIO(html), dest=result)
     return result.getvalue()
 
-# --- Crawler Logic ---
+# --- Crawler Function ---
 def crawl_entire_site(start_url):
     visited = set()
     queue = [start_url]
@@ -76,16 +85,17 @@ def crawl_entire_site(start_url):
     while queue:
         current_index = total_to_crawl - len(queue)
         current_url = queue.pop(0)
+        normalized_current = normalize_url(current_url)
 
-        if current_url in visited:
+        if normalized_current in visited:
             continue
 
-        status_text.text(f"🔍 Auditing {current_url} ({current_index + 1} of {total_to_crawl})")
+        status_text.text(f"🔍 Auditing {current_url} ({current_index + 1} of approx. {total_to_crawl})")
 
         try:
             response = requests.get(current_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
             soup = BeautifulSoup(response.content, "html.parser")
-            visited.add(current_url)
+            visited.add(normalized_current)
 
             report = full_seo_audit(current_url)
             all_reports.append({"url": current_url, "report": report})
@@ -93,9 +103,19 @@ def crawl_entire_site(start_url):
             base = urlparse(start_url).netloc
             for a in soup.find_all("a", href=True):
                 href = a["href"]
+
+                if not is_valid_link(href):
+                    continue
+
                 full_url = urljoin(current_url, href)
-                if urlparse(full_url).netloc == base and full_url not in visited and full_url not in queue:
-                    queue.append(full_url)
+                normalized_url = normalize_url(full_url)
+
+                if (
+                    urlparse(normalized_url).netloc == base and
+                    normalized_url not in visited and
+                    normalized_url not in queue
+                ):
+                    queue.append(normalized_url)
                     total_to_crawl += 1
 
             progress_bar.progress((current_index + 1) / total_to_crawl)
@@ -108,7 +128,7 @@ def crawl_entire_site(start_url):
     progress_bar.progress(1.0)
     return all_reports
 
-# --- Streamlit UI ---
+# --- Streamlit App ---
 def main():
     st.title("🕷️ Full-Site AI SEO Auditor")
 
