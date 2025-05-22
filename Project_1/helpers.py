@@ -16,6 +16,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 
 
+
 load_dotenv()
 llm_instance = LLM.create(
     provider=LLMProvider.GEMINI,
@@ -40,17 +41,17 @@ def display_wrapped_json(data, width=80):
 
 def get_rendered_html(url):
     try:
+        chrome_path = "/usr/bin/google-chrome"  # ✅ Playwright installs this in Docker
         options = uc.ChromeOptions()
+        options.binary_location = chrome_path  # ✅ Important fix
+
         options.add_argument("--headless=new")
-        options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
 
         driver = uc.Chrome(options=options)
-
-        print(f"🔍 Opening: {url}")
         driver.get(url)
-        driver.implicitly_wait(8)  # wait for JS to render
+        driver.implicitly_wait(10)
         html = driver.page_source
         driver.quit()
         return html
