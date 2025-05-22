@@ -4,32 +4,34 @@ import os
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
-
-# Set Gemini API key from environment
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-def generate_keywords(seed_keyword):
-    """
-    Generate keywords using Google Gemini API based on the seed keyword.
-    """
+# ----------- Keyword Generation (Gemini) -----------
+
+def generate_keywords(seed_keyword, location):
     if not GEMINI_API_KEY:
-        st.error("⚠️ Gemini API key not found. Please add `GEMINI_API_KEY=your_key` in a .env file.")
+        st.error("⚠️ Gemini API key not found.")
         return None
 
     prompt = f"""
-Please ignore all previous instructions. You are a proficient SEO and keyword research expert.
+You are an expert SEO strategist working for luxury fashion clients.
 
-Generate a markdown table of 100 **non-branded** keywords based on the seed keyword "{seed_keyword}".
-⚠️ Do not include any branded, trademarked, or company-specific keywords. Only use generic, longtail, LSI, and FAQ keywords that have commercial or informational intent.
+Generate 100 highly relevant **non-branded** keywords.
 
-Columns: Keyword, Search Volume, CPC (USD), Paid Difficulty, SEO Difficulty, Keyword Intent.
+Seed keyword: "{seed_keyword}"
+Location: "{location}"
 
-Output must be clean and in markdown table format only. Also, sort the output based on the best opportunities for ranking and conversion.
+- Only generic keywords (no brand names).
+- Include long-tail, informational, commercial, and LSI keywords.
+- Output as a markdown table sorted by keyword opportunity.
+
+Columns:
+| Keyword | Search Volume | CPC (USD) | Paid Difficulty | SEO Difficulty | Search Intent | Estimated SERP Results |
 """
 
     try:
@@ -39,6 +41,8 @@ Output must be clean and in markdown table format only. Also, sort the output ba
     except Exception as e:
         st.error(f"Error generating keywords: {str(e)}")
         return None
+
+# ----------- Parse Gemini Table -----------
 
 def parse_response_to_dataframe(response_text):
     try:
@@ -52,36 +56,75 @@ def parse_response_to_dataframe(response_text):
         rows = []
         for line in table_lines[1:]:
             row = [cell.strip() for cell in line.strip('|').split('|')]
-            rows.append(row)
+            if len(row) == len(headers):
+                rows.append(row)
 
         df = pd.DataFrame(rows, columns=headers)
+
+        # Clean Keyword column
+        if "Keyword" in df.columns:
+            df["Keyword"] = df["Keyword"].str.replace("**", "", regex=False).str.strip()
+
+        # Expand Search Intent values
+        if "Search Intent" in df.columns:
+            intent_map = {
+                "T": "Transactional",
+                "C": "Commercial",
+                "I": "Informational",
+                "t": "Transactional",
+                "c": "Commercial",
+                "i": "Informational"
+            }
+            df["Search Intent"] = df["Search Intent"].map(lambda x: intent_map.get(x.strip(), x) if isinstance(x, str) else x)
+
+        # Convert numeric columns
+        for col in ["Search Volume", "CPC (USD)", "Paid Difficulty", "SEO Difficulty"]:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+        # Calculate opportunity score
+        df["Opportunity Score"] = (
+            df["Search Volume"] * 0.6 +
+            (100 / (df["SEO Difficulty"] + 1)) +
+            (80 / (df["Paid Difficulty"] + 1))
+        )
+
+        # Sort by best keyword opportunity
+        df = df.sort_values(by="Opportunity Score", ascending=False).reset_index(drop=True)
+
         return df
     except Exception as e:
         st.error(f"Error parsing table: {e}")
         return None
 
-def main():
-    st.title("🔎 AI Keyword Explorer (Gemini 2.0 Flash)")
-    st.write("Enter a seed keyword below and click 'Generate Keywords' to get SEO-optimized suggestions.")
+# ----------- Main App -----------
 
-    seed_keyword = st.text_input("💡 Seed Keyword")
+def main():
+    st.title("👗 Fashion SEO Keyword Explorer (AI-Powered)")
+
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        seed_keyword = st.text_input("🔍 Seed Keyword", placeholder="e.g., designer lehenga")
+    with col2:
+        location = st.selectbox("🌍 Location", ["India", "UAE", "UK", "USA", "Australia", "Singapore", "Custom"])
+        if location == "Custom":
+            location = st.text_input("✏️ Enter Custom Location", placeholder="e.g., Dubai, London")
 
     if st.button("🚀 Generate Keywords") and seed_keyword:
         with st.spinner("Generating keyword suggestions..."):
-            response = generate_keywords(seed_keyword)
+            response = generate_keywords(seed_keyword, location)
             if response:
                 df = parse_response_to_dataframe(response)
                 if df is not None:
-                    st.subheader("📊 Keyword Suggestions")
-                    st.dataframe(df, use_container_width=True)
+                    st.session_state["gemini_keywords"] = df
 
-                    csv_data = df.to_csv(index=False).encode("utf-8")
-                    st.download_button(
-                        label="📥 Download CSV",
-                        data=csv_data,
-                        file_name=f"keywords_{seed_keyword.replace(' ', '_')}.csv",
-                        mime="text/csv"
-                    )
+    df = st.session_state.get("gemini_keywords")
+
+    if df is not None:
+        st.subheader("📊 Keyword Suggestions (Ranked by Opportunity Score)")
+        st.dataframe(df, use_container_width=True)
+
+        csv_data = df.to_csv(index=False).encode("utf-8")
+        st.download_button("📥 Download CSV", data=csv_data, file_name="ai_keywords.csv")
 
 if __name__ == "__main__":
     main()
