@@ -1,3 +1,5 @@
 venv/
 .vscode/
 SimplerLLM/
+__pycache__/
+*.pyc
