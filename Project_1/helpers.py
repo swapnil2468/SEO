@@ -8,8 +8,14 @@ import json
 import streamlit as st
 import os
 from dotenv import load_dotenv
-from urllib.parse import urlparse, urljoin
 import re
+import time
+from playwright.sync_api import sync_playwright
+import undetected_chromedriver as uc
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+
+
 load_dotenv()
 llm_instance = LLM.create(
     provider=LLMProvider.GEMINI,
@@ -18,12 +24,8 @@ llm_instance = LLM.create(
 )
 
 def display_wrapped_json(data, width=80):
-    """
-    Display JSON data with text wrapping for improved readability.
-    """
     def wrap_str(s):
         return '\n'.join(wrap(s, width=width))
-    
     def process_item(item):
         if isinstance(item, dict):
             return {k: process_item(v) for k, v in item.items()}
@@ -33,9 +35,40 @@ def display_wrapped_json(data, width=80):
             return wrap_str(item)
         else:
             return item
-    
     wrapped_data = process_item(data)
     st.code(json.dumps(wrapped_data, indent=2), language='json')
+
+def get_rendered_html(url):
+    try:
+        options = uc.ChromeOptions()
+        options.add_argument("--headless=new")
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+
+        driver = uc.Chrome(options=options)
+
+        print(f"🔍 Opening: {url}")
+        driver.get(url)
+        driver.implicitly_wait(8)  # wait for JS to render
+        html = driver.page_source
+        driver.quit()
+        return html
+    except Exception as e:
+        print(f"❌ UC Error fetching {url}: {e}")
+        return None
+
+
+def extract_internal_links(html, base_url):
+    soup = BeautifulSoup(html, "html.parser")
+    internal_links = set()
+    domain = urlparse(base_url).netloc
+    for tag in soup.find_all("a", href=True):
+        href = tag["href"]
+        if href.startswith("/") or domain in href:
+            full_url = urljoin(base_url, href)
+            internal_links.add(full_url.split("#")[0])
+    return list(internal_links)
 
 def full_seo_audit(url):
     result = {}
@@ -43,11 +76,14 @@ def full_seo_audit(url):
     internal_errors = []
 
     try:
-        response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, allow_redirects=True, timeout=10)
-        soup = BeautifulSoup(response.content, "html.parser")
+        html = get_rendered_html(url)
+        if not html:
+            result["error"] = f"Could not render page: {url}"
+            return result
+
+        soup = BeautifulSoup(html, "html.parser")
         parsed_url = urlparse(url)
 
-        # Metadata
         title_tag = soup.find("title")
         desc_tag = soup.find("meta", {"name": "description"})
         result["title"] = {
@@ -61,11 +97,9 @@ def full_seo_audit(url):
             "word_count": len(desc_tag["content"].strip().split()) if desc_tag and desc_tag.get("content") else 0,
         }
 
-        # Headings H1–H6
         result["headings"] = {f"H{i}": len(soup.find_all(f"h{i}")) for i in range(1, 7)}
         result["H1_content"] = soup.find("h1").text.strip() if soup.find("h1") else ""
 
-        # Word & anchor text stats
         text = " ".join(soup.stripped_strings)
         total_words = len(re.findall(r'\b\w+\b', text))
         anchor_tags = soup.find_all("a", href=True)
@@ -79,23 +113,19 @@ def full_seo_audit(url):
             "sample_anchors": anchor_texts[:10]
         }
 
-        # HTTPS and redirection
         result["https_info"] = {
             "using_https": url.startswith("https://"),
-            "was_redirected": len(response.history) > 0
+            "was_redirected": False  # requests not used here
         }
 
-        # Text-to-HTML ratio
-        html_size = len(response.text)
+        html_size = len(html)
         result["text_to_html_ratio_percent"] = round((len(text) / html_size) * 100, 2) if html_size else 0
 
-        # Schema detection
         result["schema"] = {
             "json_ld_found": bool(soup.find_all("script", {"type": "application/ld+json"})),
             "microdata_found": bool(soup.find_all(attrs={"itemscope": True}))
         }
 
-        # Image alt analysis
         images = soup.find_all("img")
         result["images"] = {
             "total_images": len(images),
@@ -103,7 +133,6 @@ def full_seo_audit(url):
             "sample_images": [{"src": img.get("src"), "alt": img.get("alt")} for img in images[:5]]
         }
 
-        # robots.txt
         robots_url = f"{parsed_url.scheme}://{parsed_url.netloc}/robots.txt"
         try:
             robots_response = requests.get(robots_url, timeout=5)
@@ -118,11 +147,9 @@ def full_seo_audit(url):
                 "disallows": []
             }
 
-        # meta robots tag
         meta_robots = soup.find("meta", {"name": "robots"})
         result["meta_robots"] = meta_robots["content"] if meta_robots and meta_robots.get("content") else ""
 
-        # Internal link 4xx/5xx error detection 
         base_domain = parsed_url.netloc
         for a in anchor_tags:
             href = a["href"]
@@ -142,7 +169,6 @@ def full_seo_audit(url):
         result["error"] = str(e)
 
     return result
-
 def ai_analysis(report):
     prompt = f"""You are an advanced SEO and web performance analyst. I am providing a JSON-formatted audit report of a website. This JSON includes data for individual URLs covering:
         •	HTTP/HTTPS status and response codes (including 4xx and 5xx errors)

@@ -1,5 +1,5 @@
 import streamlit as st
-from helpers import ai_analysis, display_wrapped_json, full_seo_audit
+from helpers import ai_analysis, display_wrapped_json, full_seo_audit, get_rendered_html
 from urllib.parse import urlparse, urljoin, urlunparse
 from bs4 import BeautifulSoup
 import requests
@@ -93,8 +93,12 @@ def crawl_entire_site(start_url):
         status_text.text(f"🔍 Auditing {current_url} ({current_index + 1} of approx. {total_to_crawl})")
 
         try:
-            response = requests.get(current_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-            soup = BeautifulSoup(response.content, "html.parser")
+            html = get_rendered_html(current_url)  # ✅ rendered HTML
+            if not html:
+                all_reports.append({"url": current_url, "report": {"error": f"Could not render page: {current_url}"}})
+                continue
+
+            soup = BeautifulSoup(html, "html.parser")
             visited.add(normalized_current)
 
             report = full_seo_audit(current_url)
@@ -127,7 +131,6 @@ def crawl_entire_site(start_url):
     status_text.text("✅ Crawl completed!")
     progress_bar.progress(1.0)
     return all_reports
-
 # --- Streamlit App ---
 def main():
     st.title("🕷️ Full-Site AI SEO Auditor")
