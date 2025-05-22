@@ -41,17 +41,21 @@ def display_wrapped_json(data, width=80):
 
 def get_rendered_html(url):
     try:
-        chrome_path = "/usr/bin/google-chrome"  # ✅ Playwright installs this in Docker
         options = uc.ChromeOptions()
-        options.binary_location = chrome_path  # ✅ Important fix
+
+        # ✅ Manually specify executable location for headless Chromium on Render
+        options.binary_location = "/usr/bin/chromium"
 
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
 
-        driver = uc.Chrome(options=options)
+        # ✅ Specify manually as well just in case
+        driver = uc.Chrome(options=options, browser_executable_path="/usr/bin/chromium")
+
+        print(f"🔍 Opening: {url}")
         driver.get(url)
-        driver.implicitly_wait(10)
+        driver.implicitly_wait(8)
         html = driver.page_source
         driver.quit()
         return html
