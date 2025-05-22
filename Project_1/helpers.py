@@ -14,7 +14,7 @@ from playwright.sync_api import sync_playwright
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-
+from playwright.sync_api import sync_playwright
 
 
 load_dotenv()
@@ -41,26 +41,18 @@ def display_wrapped_json(data, width=80):
 
 def get_rendered_html(url):
     try:
-        options = uc.ChromeOptions()
-
-        # ✅ Manually specify executable location for headless Chromium on Render
-        options.binary_location = "/usr/bin/chromium"
-
-        options.add_argument("--headless=new")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-
-        # ✅ Specify manually as well just in case
-        driver = uc.Chrome(options=options, browser_executable_path="/usr/bin/chromium")
-
-        print(f"🔍 Opening: {url}")
-        driver.get(url)
-        driver.implicitly_wait(8)
-        html = driver.page_source
-        driver.quit()
-        return html
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
+            context = browser.new_context(user_agent="Mozilla/5.0")
+            page = context.new_page()
+            print(f"Opening: {url}")
+            page.goto(url, timeout=60000)
+            page.wait_for_timeout(5000)  # Wait for JS to render
+            html = page.content()
+            browser.close()
+            return html
     except Exception as e:
-        print(f"❌ UC Error fetching {url}: {e}")
+        print(f"❌ Playwright error fetching {url}: {e}")
         return None
 
 
