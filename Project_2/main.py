@@ -26,9 +26,16 @@ Generate 100 highly relevant **non-branded** keywords.
 Seed keyword: "{seed_keyword}"
 Location: "{location}"
 
-- Only generic keywords (no brand names).
-- Include long-tail, informational, commercial, and LSI keywords.
-- Output as a markdown table sorted by keyword opportunity.
+- Only use generic, long-tail, informational, commercial, and LSI keywords.
+- Avoid brand names or trademarked terms.
+- Provide realistic estimated values:
+    - Search Volume: monthly searches typical for each keyword
+    - CPC (USD): between $0.10 and $5.00
+    - Paid Difficulty: between 1 and 100 (not 0)
+    - SEO Difficulty: between 1 and 100 (not 0)
+    - Intent: must be clearly marked as Informational, Commercial, or Transactional
+
+Output as a markdown table sorted by keyword opportunity.
 
 Columns:
 | Keyword | Search Volume | CPC (USD) | Paid Difficulty | SEO Difficulty | Search Intent | Estimated SERP Results |
@@ -99,6 +106,7 @@ def parse_response_to_dataframe(response_text):
 # ----------- Main App -----------
 
 def main():
+    st.set_page_config(page_title="Fashion SEO Keyword Explorer", layout="wide")
     st.title("👗 Fashion SEO Keyword Explorer (AI-Powered)")
 
     col1, col2 = st.columns([2, 1])
