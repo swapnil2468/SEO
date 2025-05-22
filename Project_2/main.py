@@ -106,7 +106,6 @@ def parse_response_to_dataframe(response_text):
 # ----------- Main App -----------
 
 def main():
-    st.set_page_config(page_title="Fashion SEO Keyword Explorer", layout="wide")
     st.title("👗 Fashion SEO Keyword Explorer (AI-Powered)")
 
     col1, col2 = st.columns([2, 1])
