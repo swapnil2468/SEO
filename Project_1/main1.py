@@ -9,6 +9,7 @@ from datetime import datetime
 from xhtml2pdf import pisa
 import io
 import markdown2
+import pandas as pd
 
 # --- Normalize and Clean URLs ---
 def normalize_url(url):
@@ -93,7 +94,7 @@ def crawl_entire_site(start_url):
         status_text.text(f"🔍 Auditing {current_url} ({current_index + 1} of approx. {total_to_crawl})")
 
         try:
-            html = get_rendered_html(current_url)  # ✅ rendered HTML
+            html = get_rendered_html(current_url)
             if not html:
                 all_reports.append({"url": current_url, "report": {"error": f"Could not render page: {current_url}"}})
                 continue
@@ -131,6 +132,7 @@ def crawl_entire_site(start_url):
     status_text.text("✅ Crawl completed!")
     progress_bar.progress(1.0)
     return all_reports
+
 # --- Streamlit App ---
 def main():
     st.title("🕷️ Full-Site AI SEO Auditor")
@@ -165,7 +167,6 @@ def main():
                 with st.spinner("Regenerating..."):
                     st.session_state["ai_summary"] = ai_analysis(st.session_state["seo_data"])
                     st.session_state["ai_summary_time"] = datetime.now().strftime("%d %b %Y, %I:%M %p")
-
             elif "ai_summary" not in st.session_state or st.session_state["ai_summary"] is None:
                 with st.spinner("Generating summary..."):
                     st.session_state["ai_summary"] = ai_analysis(st.session_state["seo_data"])
@@ -173,7 +174,6 @@ def main():
 
             raw_summary = st.session_state["ai_summary"]
             generated_time = st.session_state.get("ai_summary_time", "")
-
             html_friendly = markdown_to_html(raw_summary)
             html = build_html_summary(html_friendly, start_url)
 
@@ -183,7 +183,6 @@ def main():
             st.markdown(raw_summary)
 
             pdf_bytes = convert_to_pdf(html)
-
             st.download_button(
                 label="📥 Download SEO Summary as PDF",
                 data=pdf_bytes,

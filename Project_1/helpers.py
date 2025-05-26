@@ -1,3 +1,11 @@
+import sys
+import asyncio
+
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+import pandas as pd
+import matplotlib.pyplot as plt
 from typing import List
 from urllib.parse import urlparse, urljoin
 from SimplerLLM.language.llm import LLM, LLMProvider
@@ -10,12 +18,9 @@ import os
 from dotenv import load_dotenv
 import re
 import time
-from playwright.sync_api import sync_playwright
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-from playwright.sync_api import sync_playwright
-
 
 load_dotenv()
 llm_instance = LLM.create(
@@ -41,18 +46,19 @@ def display_wrapped_json(data, width=80):
 
 def get_rendered_html(url):
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
-            context = browser.new_context(user_agent="Mozilla/5.0")
-            page = context.new_page()
-            print(f"Opening: {url}")
-            page.goto(url, timeout=60000)
-            page.wait_for_timeout(5000)  # Wait for JS to render
-            html = page.content()
-            browser.close()
-            return html
+        options = uc.ChromeOptions()
+        options.headless = True
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-gpu')
+
+        driver = uc.Chrome(options=options)
+        driver.get(url)
+        time.sleep(5)
+        html = driver.page_source
+        driver.quit()
+        return html
     except Exception as e:
-        print(f"❌ Playwright error fetching {url}: {e}")
+        print(f"❌ Selenium error fetching {url}: {e}")
         return None
 
 
@@ -66,6 +72,11 @@ def extract_internal_links(html, base_url):
             full_url = urljoin(base_url, href)
             internal_links.add(full_url.split("#")[0])
     return list(internal_links)
+
+# Global sets to track cross-page duplication
+titles_seen = set()
+descs_seen = set()
+content_hashes_seen = set()
 
 def full_seo_audit(url):
     result = {}
@@ -81,24 +92,51 @@ def full_seo_audit(url):
         soup = BeautifulSoup(html, "html.parser")
         parsed_url = urlparse(url)
 
+        # --- Meta Data ---
         title_tag = soup.find("title")
         desc_tag = soup.find("meta", {"name": "description"})
+
+        title_text = title_tag.text.strip() if title_tag else ""
+        desc_text = desc_tag["content"].strip() if desc_tag and desc_tag.get("content") else ""
+
         result["title"] = {
-            "text": title_tag.text.strip() if title_tag else "Missing",
-            "length": len(title_tag.text.strip()) if title_tag else 0,
-            "word_count": len(title_tag.text.strip().split()) if title_tag else 0,
+            "text": title_text or "Missing",
+            "length": len(title_text),
+            "word_count": len(title_text.split()),
         }
         result["description"] = {
-            "text": desc_tag["content"].strip() if desc_tag and desc_tag.get("content") else "Missing",
-            "length": len(desc_tag["content"].strip()) if desc_tag and desc_tag.get("content") else 0,
-            "word_count": len(desc_tag["content"].strip().split()) if desc_tag and desc_tag.get("content") else 0,
+            "text": desc_text or "Missing",
+            "length": len(desc_text),
+            "word_count": len(desc_text.split()),
         }
 
-        result["headings"] = {f"H{i}": len(soup.find_all(f"h{i}")) for i in range(1, 7)}
-        result["H1_content"] = soup.find("h1").text.strip() if soup.find("h1") else ""
+        # --- Duplicate Checks ---
+        if title_text in titles_seen:
+            result["duplicate_title"] = True
+        titles_seen.add(title_text)
 
-        text = " ".join(soup.stripped_strings)
-        total_words = len(re.findall(r'\b\w+\b', text))
+        if desc_text in descs_seen:
+            result["duplicate_meta_description"] = True
+        descs_seen.add(desc_text)
+
+        page_text = " ".join(soup.stripped_strings)
+        text_hash = hash(page_text)
+        if text_hash in content_hashes_seen:
+            result["duplicate_content"] = True
+        content_hashes_seen.add(text_hash)
+
+        # --- Headings ---
+        result["headings"] = {f"H{i}": len(soup.find_all(f"h{i}")) for i in range(1, 7)}
+        h1_tag = soup.find("h1")
+        h1_text = h1_tag.text.strip() if h1_tag else ""
+        result["H1_content"] = h1_text
+
+        # New: H1 and title duplication check
+        if h1_text and title_text and h1_text.strip().lower() == title_text.strip().lower():
+            result["h1_title_duplicate"] = True
+
+        # --- Text Stats ---
+        total_words = len(re.findall(r'\b\w+\b', page_text))
         anchor_tags = soup.find_all("a", href=True)
         anchor_texts = [a.get_text(strip=True) for a in anchor_tags if a.get_text(strip=True)]
         anchor_words = sum(len(a.split()) for a in anchor_texts)
@@ -110,26 +148,63 @@ def full_seo_audit(url):
             "sample_anchors": anchor_texts[:10]
         }
 
+        # New: Links with no anchor text
+        result["empty_anchor_text_links"] = sum(1 for a in anchor_tags if not a.get_text(strip=True))
+
+        # New: Links with non-descriptive anchor text
+        non_descriptive_phrases = {"click here", "read more", "learn more", "more", "here", "view"}
+        result["non_descriptive_anchors"] = sum(
+            1 for a in anchor_texts if a.lower() in non_descriptive_phrases
+        )
+
+        # --- Link Checks ---
         result["https_info"] = {
             "using_https": url.startswith("https://"),
-            "was_redirected": False  # requests not used here
+            "was_redirected": False
         }
 
-        html_size = len(html)
-        result["text_to_html_ratio_percent"] = round((len(text) / html_size) * 100, 2) if html_size else 0
+        if len(anchor_tags) <= 1:
+            result["single_internal_link"] = True
 
+        http_links = [urljoin(url, a["href"]) for a in anchor_tags if url.startswith("https://") and urljoin(url, a["href"]).startswith("http://")]
+        if http_links:
+            result["http_links_on_https"] = http_links
+
+        if parsed_url.query:
+            result["url_has_parameters"] = True
+
+        # --- Text/HTML Ratio ---
+        html_size = len(html)
+        result["text_to_html_ratio_percent"] = round((len(page_text) / html_size) * 100, 2) if html_size else 0
+
+        # --- Schema.org ---
         result["schema"] = {
             "json_ld_found": bool(soup.find_all("script", {"type": "application/ld+json"})),
             "microdata_found": bool(soup.find_all(attrs={"itemscope": True}))
         }
 
+        # --- Images ---
         images = soup.find_all("img")
+        broken_images = []
+        for img in images[:10]:  # Limit checks to top 10 for performance
+            src = img.get("src")
+            if src:
+                img_url = urljoin(url, src)
+                try:
+                    img_resp = requests.head(img_url, timeout=5)
+                    if img_resp.status_code >= 400:
+                        broken_images.append({"src": src, "status": img_resp.status_code})
+                except Exception as e:
+                    broken_images.append({"src": src, "error": str(e)})
+
         result["images"] = {
             "total_images": len(images),
             "images_without_alt": sum(1 for img in images if not img.get("alt")),
-            "sample_images": [{"src": img.get("src"), "alt": img.get("alt")} for img in images[:5]]
+            "sample_images": [{"src": img.get("src"), "alt": img.get("alt")} for img in images[:5]],
+            "broken_images": broken_images
         }
 
+        # --- Robots.txt ---
         robots_url = f"{parsed_url.scheme}://{parsed_url.netloc}/robots.txt"
         try:
             robots_response = requests.get(robots_url, timeout=5)
@@ -144,9 +219,11 @@ def full_seo_audit(url):
                 "disallows": []
             }
 
+        # --- Meta Robots ---
         meta_robots = soup.find("meta", {"name": "robots"})
         result["meta_robots"] = meta_robots["content"] if meta_robots and meta_robots.get("content") else ""
 
+        # --- Internal Link Status Checks ---
         base_domain = parsed_url.netloc
         for a in anchor_tags:
             href = a["href"]
@@ -166,53 +243,76 @@ def full_seo_audit(url):
         result["error"] = str(e)
 
     return result
+
+
 def ai_analysis(report):
     prompt = f"""You are an advanced SEO and web performance analyst. I am providing a JSON-formatted audit report of a website. This JSON includes data for individual URLs covering:
-        •	HTTP/HTTPS status and response codes (including 4xx and 5xx errors)
-        •	Page speed and response time
-        •	Metadata (title, description, length, duplication)
-        •	Content elements (word count, heading structure, text-to-HTML ratio)
-        •	Link data (internal/external links, anchor text quality, redirects)
-        •	Image data (alt tag presence)
-        •	Schema markup presence
-        •	Indexing and crawling restrictions (robots.txt, meta robots)
+- HTTP/HTTPS status and response codes (including 4xx and 5xx errors)
+- Page speed and response time
+- Metadata (title, description, length, duplication)
+- Content elements (word count, heading structure, text-to-HTML ratio)
+- Link data (internal/external links, anchor text quality, redirects)
+- Image data (alt tag presence, broken images)
+- Schema markup presence
+- Indexing and crawling restrictions (robots.txt, meta robots)
 
-    IMPORTANT  :- DO NOT SKIP ANY DATA FROM THE JSON REPORT PARSE THE FULL REPORT DO NOT LEAVE ANYTHING 
-    do not make any table and dont add impact
-    Based on this JSON data:
-        1. Overall Health Summary
-        Provide a concise summary of the site’s overall technical SEO health and performance.
-        2. Strengths
-        Highlight current SEO and technical strengths (e.g. fast loading pages, clean heading structure, strong HTTPS coverage, good schema usage).
-        3. Issues to Fix
-        Identify and explain:
-            •	Pages with missing or duplicate meta tags
-            •	Thin content (low word count)
-            •	Improper use of H1/H2 tags
-            •	Images missing alt text
-            •	Improper anchor text usage
-            •	3xx/4xx/5xx pages and their impact
-            •	Redirection chains or loops
-            •	Pages blocked from crawling or indexing
-            •	Poor text-to-HTML ratio
-            •	Pages missing schema markup
-        4. Critical Page-Level Errors
-        List top problematic URLs with specific issues (e.g., 500 errors, duplicate titles, noindex tag, redirect chains).
-        5. Actionable Recommendations
-        Provide clear, prioritized, and actionable steps to improve:
-            •	SEO performance
-            •	Technical stability
-            •	User experience
-            •	Crawlability and indexing
-        Format the output in well-structured sections, using bullet points and bold emphasis where helpful.
+Your response should follow this structure:
 
- Important:
+---
+
+### 📊 SEO Issue Metrics Table
+
+Create a clean **2-column table** showing all detected SEO issues (like 4xx errors, missing H1s, duplicate meta tags, low word count, broken images, non-descriptive anchors, etc.), with the count of affected pages for each. Mimic the look of a simple spreadsheet. Example:
+
+| Metric                            | Count |
+|----------------------------------|-------|
+| Missing Meta Descriptions        | 57    |
+| Duplicate Title Tags             | 61    |
+| Broken Internal Images           | 58    |
+
+---
+
+### 🧠 AI-Powered SEO Summary
+
+Then provide a detailed analysis, structured into these sections:
+
+1. **Overall Health Summary**
+   Brief summary of the site's technical SEO status.
+
+2. **Strengths**
+   Highlight technical strengths (e.g. HTTPS, schema usage, fast load times).
+
+3. **Issues to Fix**
+   Explain:
+   - Pages with missing/duplicate meta tags
+   - Thin content (low word count)
+   - Missing or overused H1/H2
+   - Images without alt attributes
+   - Broken or weak anchor text
+   - 3xx/4xx/5xx issues
+   - Redirect loops
+   - Pages blocked from indexing
+   - Schema/org issues
+   - Poor text-to-HTML ratio
+
+4. **Critical Page-Level Errors**
+   List problematic URLs and their specific technical issues.
+
+5. **Actionable Recommendations**
+   Give clear steps to improve technical SEO, indexing, crawlability, and UX.
+
+---
+
+Important:
+- Parse the full report without skipping fields.
 - Do NOT return your output as JSON.
-- Do NOT use triple backticks or code blocks.
-- DO write clear paragraphs, headings, and bullet points suitable for a presentation or client report.
+- Do NOT include triple backticks or code blocks.
+- Make the response client-friendly, as if it’s going into a formal audit report.
+- Maintain clean structure, use bullet points and sections for clarity.
 
 [SEO_REPORT]: {report}
 """
+
 
     api_key = os.getenv("GEMINI_API_KEY")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
