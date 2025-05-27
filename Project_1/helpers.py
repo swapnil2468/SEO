@@ -73,12 +73,7 @@ def extract_internal_links(html, base_url):
             internal_links.add(full_url.split("#")[0])
     return list(internal_links)
 
-# Global sets to track cross-page duplication
-titles_seen = set()
-descs_seen = set()
-content_hashes_seen = set()
-
-def full_seo_audit(url):
+def full_seo_audit(url,titles_seen, descs_seen, content_hashes_seen):
     result = {}
     visited_urls = set()
     internal_errors = []
@@ -257,20 +252,6 @@ def ai_analysis(report):
 - Indexing and crawling restrictions (robots.txt, meta robots)
 
 Your response should follow this structure:
-
----
-
-### 📊 SEO Issue Metrics Table
-
-Create a clean **2-column table** showing all detected SEO issues (like 4xx errors, missing H1s, duplicate meta tags, low word count, broken images, non-descriptive anchors, etc.), with the count of affected pages for each. Mimic the look of a simple spreadsheet. Example:
-
-| Metric                            | Count |
-|----------------------------------|-------|
-| Missing Meta Descriptions        | 57    |
-| Duplicate Title Tags             | 61    |
-| Broken Internal Images           | 58    |
-
----
 
 ### 🧠 AI-Powered SEO Summary
 

@@ -10,6 +10,7 @@ from xhtml2pdf import pisa
 import io
 import markdown2
 import pandas as pd
+from collections import defaultdict
 
 # --- Normalize and Clean URLs ---
 def normalize_url(url):
@@ -73,15 +74,50 @@ def convert_to_pdf(html: str) -> bytes:
     pisa.CreatePDF(io.StringIO(html), dest=result)
     return result.getvalue()
 
+# --- Metric Aggregator ---
+def compute_sitewide_metrics(seo_data):
+    metrics_count = defaultdict(int)
+    for page in seo_data:
+        report = page.get("report", {})
+        if report.get("title", {}).get("text", "") == "Missing":
+            metrics_count["Missing Title Tags"] += 1
+        if report.get("description", {}).get("text", "") == "Missing":
+            metrics_count["Missing Meta Descriptions"] += 1
+        if report.get("duplicate_title"):
+            metrics_count["Duplicate Title Tags"] += 1
+        if report.get("duplicate_meta_description"):
+            metrics_count["Duplicate Meta Descriptions"] += 1
+        if report.get("duplicate_content"):
+            metrics_count["Duplicate Content"] += 1
+        if report.get("H1_content", "") == "":
+            metrics_count["H1 Content Missing"] += 1
+        if report.get("headings", {}).get("H1", 0) > 1:
+            metrics_count["Excessive H1 Elements"] += 1
+        if report.get("images", {}).get("images_without_alt", 0):
+            metrics_count["Images Without Alt Attributes"] += report["images"]["images_without_alt"]
+        if report.get("empty_anchor_text_links", 0):
+            metrics_count["Empty Anchor Text Links"] += report["empty_anchor_text_links"]
+        if report.get("word_stats", {}).get("anchor_ratio_percent", 0) > 15:
+            metrics_count["High Anchor Word Ratio (%)"] += 1
+        if not report.get("schema", {}).get("json_ld_found", False):
+            metrics_count["JSON-LD Schema Absent"] += 1
+        if report.get("text_to_html_ratio_percent", 100) < 10:
+            metrics_count["Low Text-to-HTML Ratio (%)"] += 1
+    return pd.DataFrame(metrics_count.items(), columns=["Metric", "Count"])
+
 # --- Crawler Function ---
 def crawl_entire_site(start_url):
     visited = set()
     queue = [start_url]
     all_reports = []
-
     total_to_crawl = 1
     progress_bar = st.progress(0)
     status_text = st.empty()
+
+    # Add duplication trackers here
+    titles_seen = set()
+    descs_seen = set()
+    content_hashes_seen = set()
 
     while queue:
         current_index = total_to_crawl - len(queue)
@@ -101,25 +137,17 @@ def crawl_entire_site(start_url):
 
             soup = BeautifulSoup(html, "html.parser")
             visited.add(normalized_current)
-
-            report = full_seo_audit(current_url)
+            report = full_seo_audit(current_url, titles_seen, descs_seen, content_hashes_seen)
             all_reports.append({"url": current_url, "report": report})
 
             base = urlparse(start_url).netloc
             for a in soup.find_all("a", href=True):
                 href = a["href"]
-
                 if not is_valid_link(href):
                     continue
-
                 full_url = urljoin(current_url, href)
                 normalized_url = normalize_url(full_url)
-
-                if (
-                    urlparse(normalized_url).netloc == base and
-                    normalized_url not in visited and
-                    normalized_url not in queue
-                ):
+                if urlparse(normalized_url).netloc == base and normalized_url not in visited and normalized_url not in queue:
                     queue.append(normalized_url)
                     total_to_crawl += 1
 
@@ -144,7 +172,6 @@ def main():
         if not start_url:
             st.warning("Please enter a valid URL.")
             return
-
         if not start_url.startswith("http://") and not start_url.startswith("https://"):
             start_url = "https://" + start_url.strip()
 
@@ -163,6 +190,10 @@ def main():
             display_wrapped_json(st.session_state["seo_data"])
 
         elif view == "🤖 AI SEO Summary":
+            metrics_df = compute_sitewide_metrics(st.session_state["seo_data"])
+            st.markdown("### 📊 Full SEO Issue Metrics (Calculated from All Pages)")
+            st.dataframe(metrics_df)
+
             if st.button("♻️ Regenerate AI Summary"):
                 with st.spinner("Regenerating..."):
                     st.session_state["ai_summary"] = ai_analysis(st.session_state["seo_data"])
@@ -191,4 +222,4 @@ def main():
             )
 
 if __name__ == "__main__":
-    main()
+    main()  
