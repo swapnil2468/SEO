@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
 
 # Python packages
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt && playwright install chromium
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
 # App source
 COPY . /app
