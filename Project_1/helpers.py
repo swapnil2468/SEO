@@ -46,20 +46,48 @@ def display_wrapped_json(data, width=80):
 
 def get_rendered_html(url):
     try:
-        options = uc.ChromeOptions()
-        options.headless = True
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-gpu')
+        # Step 1: Try basic request first
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        }
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code != 200 or len(resp.text.strip()) < 800:
+            raise Exception("Fallback to browserless: short or failed HTML")
 
-        driver = uc.Chrome(options=options)
-        driver.get(url)
-        time.sleep(5)
-        html = driver.page_source
-        driver.quit()
-        return html
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Heuristic check: very low word count or no headings
+        page_text = " ".join(soup.stripped_strings)
+        word_count = len(re.findall(r'\b\w+\b', page_text))
+        has_heading = soup.find("h1") or soup.find("h2")
+
+        if word_count < 50 or not has_heading:
+            raise Exception("Fallback to browserless: likely JS-only page")
+
+        print(f"✅ Used requests for {url}")
+        return resp.text
+
     except Exception as e:
-        print(f"❌ Selenium error fetching {url}: {e}")
-        return None
+        print(f"⚠️ Using browserless for {url} — Reason: {e}")
+        try:
+            api_key = os.getenv("BROWSERLESS_API_KEY")
+            if not api_key:
+                raise Exception("Missing BROWSERLESS_API_KEY")
+
+            browserless_url = "https://chrome.browserless.io/content?token=" + api_key
+            response = requests.post(browserless_url, json={"url": url}, timeout=30)
+
+            if response.status_code == 200:
+                print(f"✅ Browserless succeeded for {url}")
+                return response.text
+            else:
+                print(f"❌ Browserless failed: {response.status_code}")
+                return None
+        except Exception as req_error:
+            print(f"❌ Final fallback failed: {req_error}")
+            return None
+
+
 
 
 def extract_internal_links(html, base_url):
