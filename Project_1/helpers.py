@@ -60,9 +60,7 @@ def get_rendered_html(url):
 
         # Launch the browser
         driver = uc.Chrome(options=options)
-        driver.set_page_load_timeout(45)
-        time.sleep(6)   # was 5
-
+        driver.set_page_load_timeout(30)
         driver.get(url)
 
         time.sleep(5)  # Wait for JavaScript to load
@@ -76,9 +74,6 @@ def get_rendered_html(url):
         print(f"❌ Failed to render page using Selenium: {e}")
         return None
 
-
-
-
 def extract_internal_links(html, base_url):
     soup = BeautifulSoup(html, "html.parser")
     internal_links = set()
@@ -90,13 +85,12 @@ def extract_internal_links(html, base_url):
             internal_links.add(full_url.split("#")[0])
     return list(internal_links)
 
-def full_seo_audit(url,titles_seen, descs_seen, content_hashes_seen):
+def full_seo_audit(url, titles_seen, descs_seen, content_hashes_seen, html):
     result = {}
     visited_urls = set()
     internal_errors = []
 
     try:
-        html = get_rendered_html(url)
         if not html:
             result["error"] = f"Could not render page: {url}"
             return result
@@ -122,7 +116,7 @@ def full_seo_audit(url,titles_seen, descs_seen, content_hashes_seen):
             "word_count": len(desc_text.split()),
         }
 
-        # --- Duplicate Checks ---
+        # Duplicate Checks
         if title_text in titles_seen:
             result["duplicate_title"] = True
         titles_seen.add(title_text)
@@ -137,17 +131,15 @@ def full_seo_audit(url,titles_seen, descs_seen, content_hashes_seen):
             result["duplicate_content"] = True
         content_hashes_seen.add(text_hash)
 
-        # --- Headings ---
+        # Headings
         result["headings"] = {f"H{i}": len(soup.find_all(f"h{i}")) for i in range(1, 7)}
         h1_tag = soup.find("h1")
         h1_text = h1_tag.text.strip() if h1_tag else ""
         result["H1_content"] = h1_text
-
-        # New: H1 and title duplication check
         if h1_text and title_text and h1_text.strip().lower() == title_text.strip().lower():
             result["h1_title_duplicate"] = True
 
-        # --- Text Stats ---
+        # Text Stats
         total_words = len(re.findall(r'\b\w+\b', page_text))
         anchor_tags = soup.find_all("a", href=True)
         anchor_texts = [a.get_text(strip=True) for a in anchor_tags if a.get_text(strip=True)]
@@ -160,16 +152,14 @@ def full_seo_audit(url,titles_seen, descs_seen, content_hashes_seen):
             "sample_anchors": anchor_texts[:10]
         }
 
-        # New: Links with no anchor text
         result["empty_anchor_text_links"] = sum(1 for a in anchor_tags if not a.get_text(strip=True))
 
-        # New: Links with non-descriptive anchor text
         non_descriptive_phrases = {"click here", "read more", "learn more", "more", "here", "view"}
         result["non_descriptive_anchors"] = sum(
             1 for a in anchor_texts if a.lower() in non_descriptive_phrases
         )
 
-        # --- Link Checks ---
+        # HTTPS check
         result["https_info"] = {
             "using_https": url.startswith("https://"),
             "was_redirected": False
@@ -185,20 +175,17 @@ def full_seo_audit(url,titles_seen, descs_seen, content_hashes_seen):
         if parsed_url.query:
             result["url_has_parameters"] = True
 
-        # --- Text/HTML Ratio ---
         html_size = len(html)
         result["text_to_html_ratio_percent"] = round((len(page_text) / html_size) * 100, 2) if html_size else 0
 
-        # --- Schema.org ---
         result["schema"] = {
             "json_ld_found": bool(soup.find_all("script", {"type": "application/ld+json"})),
             "microdata_found": bool(soup.find_all(attrs={"itemscope": True}))
         }
 
-        # --- Images ---
         images = soup.find_all("img")
         broken_images = []
-        for img in images[:10]:  # Limit checks to top 10 for performance
+        for img in images[:10]:
             src = img.get("src")
             if src:
                 img_url = urljoin(url, src)
@@ -216,7 +203,6 @@ def full_seo_audit(url,titles_seen, descs_seen, content_hashes_seen):
             "broken_images": broken_images
         }
 
-        # --- Robots.txt ---
         robots_url = f"{parsed_url.scheme}://{parsed_url.netloc}/robots.txt"
         try:
             robots_response = requests.get(robots_url, timeout=5)
@@ -231,11 +217,9 @@ def full_seo_audit(url,titles_seen, descs_seen, content_hashes_seen):
                 "disallows": []
             }
 
-        # --- Meta Robots ---
         meta_robots = soup.find("meta", {"name": "robots"})
         result["meta_robots"] = meta_robots["content"] if meta_robots and meta_robots.get("content") else ""
 
-        # --- Internal Link Status Checks ---
         base_domain = parsed_url.netloc
         for a in anchor_tags:
             href = a["href"]
@@ -255,6 +239,7 @@ def full_seo_audit(url,titles_seen, descs_seen, content_hashes_seen):
         result["error"] = str(e)
 
     return result
+
 
 
 def ai_analysis(report):

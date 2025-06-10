@@ -15,9 +15,8 @@ from collections import defaultdict
 # --- Normalize and Clean URLs ---
 def normalize_url(url):
     parsed = urlparse(url)
-    clean_path = parsed.path.rstrip('/').lower()
-    clean_netloc = parsed.netloc.lower()
-    return urlunparse((parsed.scheme, clean_netloc, clean_path, '', '', ''))
+    clean_path = parsed.path.rstrip('/')
+    return urlunparse((parsed.scheme, parsed.netloc, clean_path, '', '', ''))
 
 def is_valid_link(href):
     return (
@@ -115,7 +114,7 @@ def crawl_entire_site(start_url):
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    # Track seen content for duplication checks
+    # Add duplication trackers here
     titles_seen = set()
     descs_seen = set()
     content_hashes_seen = set()
@@ -127,33 +126,18 @@ def crawl_entire_site(start_url):
 
         if normalized_current in visited:
             continue
-        visited.add(normalized_current)
 
         status_text.text(f"🔍 Auditing {current_url} ({current_index + 1} of approx. {total_to_crawl})")
 
-
         try:
-            # Try rendering the page
             html = get_rendered_html(current_url)
-
-            # Retry once if it failed
             if not html:
-                time.sleep(3)
-                html = get_rendered_html(current_url)
-
-            if not html:
-                all_reports.append({
-                    "url": current_url,
-                    "report": {
-                        "error": "Could not render page after retry (Selenium timeout or JS crash)"
-                    }
-                })
+                all_reports.append({"url": current_url, "report": {"error": f"Could not render page: {current_url}"}})
                 continue
 
             soup = BeautifulSoup(html, "html.parser")
             visited.add(normalized_current)
-
-            report = full_seo_audit(current_url, titles_seen, descs_seen, content_hashes_seen)
+            report = full_seo_audit(current_url, titles_seen, descs_seen, content_hashes_seen, html)
             all_reports.append({"url": current_url, "report": report})
 
             base = urlparse(start_url).netloc
@@ -171,17 +155,11 @@ def crawl_entire_site(start_url):
             time.sleep(0.5)
 
         except Exception as e:
-            all_reports.append({
-                "url": current_url,
-                "report": {
-                    "error": f"Unexpected crash: {str(e)}"
-                }
-            })
+            all_reports.append({"url": current_url, "error": str(e)})
 
     status_text.text("✅ Crawl completed!")
     progress_bar.progress(1.0)
     return all_reports
-
 
 # --- Streamlit App ---
 def main():
